@@ -48,6 +48,7 @@ PAGE = Template(
   --yellow: #9a6700;
   --red: #cf222e;
   --unknown: #8c959f;
+  --empty: #8c959f;   /* рамка пустой клетки: контраст 3.04:1 к белому */
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -60,6 +61,7 @@ PAGE = Template(
     --yellow: #d29922;
     --red: #f85149;
     --unknown: #6e7681;
+    --empty: #5b636d;   /* контраст 3.11:1 к фону темы */
   }
 }
 * { box-sizing: border-box; }
@@ -85,11 +87,14 @@ td.name { font-weight: 600; }
 .badge.red { color: var(--red); background: color-mix(in srgb, var(--red) 12%, transparent); }
 .badge.unknown { color: var(--unknown); background: color-mix(in srgb, var(--unknown) 14%, transparent); }
 .dim { color: var(--muted); font-size: 13px; }
-.bars { display: inline-flex; gap: 2px; align-items: flex-end; height: 22px; }
-.bar { width: 5px; height: 18px; border-radius: 1px; background: var(--unknown); }
+.bars { display: inline-flex; gap: 2px; align-items: flex-end; height: 24px; }
+.bar { width: 6px; height: 20px; border-radius: 1px; background: var(--unknown); }
 .bar.green { background: var(--green); }
 .bar.yellow { background: var(--yellow); }
 .bar.red { background: var(--red); }
+/* «нет данных» — пустая клетка, а не заливка: иначе полоса читается как сплошная */
+.bar.unknown { background: transparent; box-shadow: inset 0 0 0 1px var(--empty); }
+.scroll { overflow-x: auto; }
 details { margin: 2px 0 6px; }
 summary { cursor: pointer; color: var(--muted); font-size: 13px; }
 details table { margin: 8px 0 4px; background: var(--card); border-radius: 8px; }
@@ -109,9 +114,12 @@ details tr:last-child td { border-bottom: 0; }
 доступен из России, а подключение не идёт — это тот случай.
 </p>
 $body
-<p class="foot">Зелёный — от 80&nbsp;% ответивших российских зондов, жёлтый — от 50&nbsp;%,
-красный — ниже. «Нет данных» означает, что источник не ответил или зонды не взялись за
-задачу, а не «сервер недоступен». Доступность считается за 30 дней по проверкам с данными.</p>
+<p class="foot"><b>Полоса доступности</b> — 30 дней: слева самый старый день, справа сегодня.
+Пустая клетка — нет данных, зелёная — доступен, жёлтая — частично, красная — недоступен.
+Наведите на клетку, чтобы увидеть дату.
+Зелёный — от 80&nbsp;% ответивших российских зондов, жёлтый — от 50&nbsp;%, красный — ниже.
+«Нет данных» означает, что источник не ответил или зонды не взялись за задачу, а не
+«сервер недоступен».</p>
 </main>
 </body>
 </html>
@@ -225,8 +233,9 @@ def render_page(payload: dict[str, Any], providers: dict[str, list[dict[str, Any
     )
     if rows:
         body = (
-            "<table><thead><tr><th>Локация</th><th>Из мира</th><th>Из России</th>"
-            f"<th>Доступность, 30 дней</th></tr></thead><tbody>{rows}</tbody></table>"
+            '<div class="scroll"><table><thead><tr><th>Локация</th><th>Из мира</th>'
+            f"<th>Из России</th><th>Доступность, 30 дней</th></tr></thead><tbody>{rows}"
+            "</tbody></table></div>"
         )
     else:
         body = (

@@ -74,6 +74,30 @@ def test_bar_rule_keeps_explicit_height():
     assert ".bars" in html and "display: inline-flex" in html
 
 
+def test_empty_day_is_outlined_not_filled():
+    """«Нет данных» — пустая клетка в рамке: заливка читалась как сплошная полоса."""
+
+    html = render_page(PAYLOAD, {})
+    rule = next(line for line in html.splitlines() if line.startswith(".bar.unknown {"))
+    assert "transparent" in rule and "inset" in rule and "var(--empty)" in rule
+    # токен должен быть определён в обеих темах, иначе рамка станет прозрачной
+    assert html.count("--empty:") == 2
+
+
+def test_page_explains_the_bar():
+    html = render_page(PAYLOAD, {})
+    assert "<b>Полоса доступности</b>" in html
+    assert "слева самый старый день, справа сегодня" in html
+    assert "Пустая клетка — нет данных" in html
+
+
+def test_table_is_scrollable_on_narrow_screens():
+    html = render_page(PAYLOAD, {})
+    assert '<div class="scroll"><table>' in html
+    rule = next(line for line in html.splitlines() if line.startswith(".scroll {"))
+    assert "overflow-x: auto" in rule
+
+
 def test_page_lists_providers_without_js():
     html = render_page(PAYLOAD, PROVIDERS)
     assert "<details>" in html and "По провайдерам в России: 1 из 2 доступны" in html
