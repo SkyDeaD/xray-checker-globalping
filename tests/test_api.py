@@ -5,8 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from app import store
-from app.collector import StatusState
-from tests.conftest import loc
+from tests.conftest import seed_stand
 
 NOW = datetime(2026, 10, 9, 12, 0, tzinfo=UTC)
 
@@ -25,26 +24,9 @@ async def test_status_without_sources_is_disabled(api):
     assert (await client.get("/api/status/NL/providers")).status_code == 404
 
 
-async def _seed(app, sessionmaker):
-    state = StatusState(locations=[
-        loc("nl", [("nl.test", 44321)], name="Нидерланды"),
-        loc("pl", [("pl.test", 84430)], name="Польша"),
-    ])
-    await store.add_check(sessionmaker, key="nl", source="world", level="green", now=NOW)
-    await store.add_check(sessionmaker, key="pl", source="world", level="green", now=NOW)
-    await store.add_check(sessionmaker, key="pl", source="ru", level="yellow",
-                          ok_count=15, total_count=20, now=NOW)
-    await store.save_probes(sessionmaker, "pl", [
-        {"city": "Москва", "provider": "P1", "asn": 1, "ok": True, "ms": 25},
-        {"city": "Омск", "provider": "P2", "asn": 2, "ok": False, "ms": None},
-    ], now=NOW)
-    app.state.status_state = state
-    return state
-
-
 async def test_status_payload_and_no_leaks(api, sessionmaker):
     app, client = api
-    await _seed(app, sessionmaker)
+    await seed_stand(app, sessionmaker)
     resp = await client.get("/api/status")
     assert resp.status_code == 200
     body = resp.json()
@@ -64,7 +46,7 @@ async def test_status_payload_and_no_leaks(api, sessionmaker):
 
 async def test_status_cache_ttl(api, sessionmaker):
     app, client = api
-    await _seed(app, sessionmaker)
+    await seed_stand(app, sessionmaker)
     first = (await client.get("/api/status")).json()
     await store.add_check(sessionmaker, key="nl", source="world", level="red", now=NOW)
     assert (await client.get("/api/status")).json() == first   # из кэша
@@ -75,7 +57,7 @@ async def test_status_cache_ttl(api, sessionmaker):
 
 async def test_providers_endpoint(api, sessionmaker):
     app, client = api
-    await _seed(app, sessionmaker)
+    await seed_stand(app, sessionmaker)
     resp = await client.get("/api/status/pl/providers")
     assert resp.status_code == 200
     body = resp.json()
@@ -98,7 +80,7 @@ async def test_status_expose_targets_flag(sessionmaker):
                               expose_targets=True))
     async with app.router.lifespan_context(app):
         app.state.sessionmaker = sessionmaker
-        await _seed(app, sessionmaker)
+        await seed_stand(app, sessionmaker)
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             body = (await client.get("/api/status")).json()
     by = {item["key"]: item for item in body["locations"]}

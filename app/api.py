@@ -1,4 +1,4 @@
-"""HTTP-приложение: публичные ``/api/status`` и ``/api/status/{key}/providers``.
+"""HTTP-приложение: готовая страница ``/`` и JSON ``/api/status``.
 
 Данные собирает фоновая задача (``app/collector.py``); эндпоинты только читают
 свои таблицы. Ответ кэшируется (``CACHE_TTL``, по умолчанию 60 с): публичный
@@ -15,27 +15,31 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 from fastapi import APIRouter, FastAPI, HTTPException, Request
+from fastapi.responses import HTMLResponse
 
 from .collector import StatusState, run_collector
 from .config import Settings
 from .db import bootstrap, make_engine, make_sessionmaker
+from .page import render_page
 from .service import build_providers, build_status, disabled_payload
 from .sources import GlobalpingSource, XrayCheckerSource
 
 logger = logging.getLogger(__name__)
 
 router: APIRouter = APIRouter(prefix="/api", tags=["status"])
+page_router: APIRouter = APIRouter(tags=["page"])
 
 
 def _state(request: Request) -> StatusState | None:
     return getattr(request.app.state, "status_state", None)
 
 
-@router.get("/status")
-async def get_status(request: Request) -> dict[str, Any]:
+async def _status_payload(request: Request) -> dict[str, Any] | None:
+    """Текущий ответ статуса с кэшем ``CACHE_TTL``; ``None`` — источники не настроены."""
+
     state = _state(request)
     if state is None:  # источники не настроены — сборщик не запущен
-        return disabled_payload()
+        return None
     cached = getattr(request.app.state, "status_cache", None)
     now = time.monotonic()
     if cached is not None and now < cached[0]:
@@ -48,6 +52,30 @@ async def get_status(request: Request) -> dict[str, Any]:
     )
     request.app.state.status_cache = (now + settings.cache_ttl, payload)
     return payload
+
+
+@router.get("/status")
+async def get_status(request: Request) -> dict[str, Any]:
+    payload = await _status_payload(request)
+    return payload if payload is not None else disabled_payload()
+
+
+@page_router.get("/", response_class=HTMLResponse)
+async def get_page(request: Request) -> HTMLResponse:
+    """Готовая страница: тот же ответ, что у ``/api/status``, плюс разбор по провайдерам.
+
+    Адреса и порты серверов на страницу не выводятся никогда — даже при
+    ``EXPOSE_TARGETS=true`` (флаг действует только на JSON ``/api/status``).
+    """
+
+    payload = await _status_payload(request)
+    if payload is None:
+        return HTMLResponse(render_page(disabled_payload(), {}))
+    providers: dict[str, list[dict[str, Any]]] = {}
+    for loc in payload.get("locations") or []:
+        got = await build_providers(request.app.state.sessionmaker, str(loc.get("key")))
+        providers[str(loc.get("key"))] = got["rows"]
+    return HTMLResponse(render_page(payload, providers))
 
 
 @router.get("/status/{key}/providers")
@@ -128,6 +156,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             await engine.dispose()
 
     app = FastAPI(title="xray-checker + Globalping", lifespan=lifespan)
+    app.include_router(page_router)
     app.include_router(router)
     return app
 
