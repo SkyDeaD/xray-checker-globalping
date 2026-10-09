@@ -1,0 +1,48 @@
+# xray-checker (чужие образы/сеть) + наш сервис проверок из России.
+#
+# Роли файлов настроек:
+#   .env        — для xray-checker (подписка, метрики). Секрет: ссылка подписки.
+#   probe.env   — для нашего сервиса (токен Globalping, доступ к чекеру).
+# Разделены намеренно: ссылка подписки — ключ доступа, нашему сервису она не нужна.
+#
+# Порт сервиса публикуем только на localhost: публичный доступ — через ваш
+# обратный прокси (nginx/caddy), который отдаёт /api/status наружу.
+
+services:
+  xray-checker:
+    image: kutovoys/xray-checker:latest
+    container_name: xray-checker
+    restart: unless-stopped
+    env_file: .env
+    networks: [probe]
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+
+  probe:
+    build: .
+    container_name: xray-checker-probe
+    restart: unless-stopped
+    env_file: probe.env
+    environment:
+      # Внутри сети сервис виден по имени контейнера.
+      CHECKER_URL: http://xray-checker:2112
+      DB_PATH: /data/status.db
+    volumes:
+      - probe-data:/data
+    ports:
+      - "127.0.0.1:8080:8080"
+    depends_on: [xray-checker]
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+
+volumes:
+  probe-data:
+
+networks:
+  probe:
