@@ -65,6 +65,22 @@ def test_page_has_30_day_bars_per_location():
     assert 'class="bar unknown" title="2026-10-01: нет данных"' in html
 
 
+def test_page_marks_whitelist_location():
+    payload = {
+        "updated_at": "2026-10-09T12:00:00Z",
+        "overall": "ok",
+        "locations": [
+            {"key": "NL", "name": "Нидерланды", "country_code": "NL", "whitelist": False,
+             "world": None, "ru": None, "uptime": {"pct": None, "hours": 0}, "days": []},
+            {"key": "NL-wl", "name": "Нидерланды", "country_code": "NL", "whitelist": True,
+             "world": None, "ru": None, "uptime": {"pct": None, "hours": 0}, "days": []},
+        ],
+    }
+    html = render_page(payload, {})
+    assert html.count("белые списки") == 1
+    assert '<span class="mark">белые списки</span>' in html
+
+
 def test_bar_rule_keeps_explicit_height():
     """Без явной высоты полосы аптайма схлопываются в линию (нашли на живом рендере)."""
 

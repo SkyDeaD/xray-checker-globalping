@@ -1,38 +1,29 @@
-# xray-checker (чужие образы/сеть) + наш сервис проверок из России.
+# Сервис проверок доступности: из мира (xray-checker) и из России (Globalping).
 #
-# Роли файлов настроек:
-#   .env        — для xray-checker (подписка, метрики). Секрет: ссылка подписки.
-#   probe.env   — для нашего сервиса (токен Globalping, доступ к чекеру).
-# Разделены намеренно: ссылка подписки — ключ доступа, нашему сервису она не нужна.
+#   cp .env.example .env      # вписать PANEL_URL и PANEL_TOKEN
+#   docker compose up -d      # страница на http://localhost:8080
 #
-# Порт сервиса публикуем только на localhost: публичный доступ — через ваш
-# обратный прокси (nginx/caddy), который отдаёт /api/status наружу.
+# Колонка «из мира» появляется, если поднять ещё и xray-checker:
+#   cp .env.checker.example .env.checker && docker compose --profile checker up -d
+#
+# Порт сервиса публикуется только на localhost: наружу отдавайте через свой
+# обратный прокси (nginx/caddy), он же может закрыть страницу паролем.
 
 services:
-  xray-checker:
-    image: kutovoys/xray-checker:latest
-    container_name: xray-checker
-    restart: unless-stopped
-    env_file: .env
-    networks: [probe]
-    logging:
-      driver: json-file
-      options: {max-size: "10m", max-file: "3"}
-
   probe:
     build: .
-    container_name: xray-checker-probe
+    container_name: xray-checker-globalping
     restart: unless-stopped
-    env_file: probe.env
+    env_file: .env
     environment:
-      # Внутри сети сервис виден по имени контейнера.
-      CHECKER_URL: http://xray-checker:2112
+      # Пусто — проверок «из мира» не будет. Для профиля checker:
+      # CHECKER_URL=http://xray-checker:2112 (задать в .env).
+      CHECKER_URL: ${CHECKER_URL-}
       DB_PATH: /data/status.db
     volumes:
       - probe-data:/data
     ports:
       - "127.0.0.1:8080:8080"
-    depends_on: [xray-checker]
     read_only: true
     tmpfs: [/tmp]
     cap_drop: [ALL]
@@ -41,8 +32,16 @@ services:
       driver: json-file
       options: {max-size: "10m", max-file: "3"}
 
+  # Необязательный: «из мира». Запускается только с профилем checker.
+  xray-checker:
+    image: kutovoys/xray-checker:latest
+    container_name: xray-checker
+    profiles: [checker]
+    restart: unless-stopped
+    env_file: .env.checker
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+
 volumes:
   probe-data:
-
-networks:
-  probe:

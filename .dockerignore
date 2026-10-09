@@ -1,0 +1,19 @@
+# Что не тащить в образ: мусор сборки, секреты, локальные базы и демо-файлы
+# (демо монтируется томом, в образ ему не нужно).
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+data/
+*.db
+*.db-journal
+.pytest_cache/
+.ruff_cache/
+.git/
+.gitignore
+.env
+.env.checker
+.env.example
+.env.checker.example
+demo/
+README.md

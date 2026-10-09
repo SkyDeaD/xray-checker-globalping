@@ -6,8 +6,11 @@ import pytest
 
 from app.sources import SourceError, XrayProxy
 from app.targets import (
+    CheckerTargets,
     Location,
-    fetch_locations,
+    ManualTargets,
+    PanelTargets,
+    build_targets,
     group_proxies,
     parse_target,
     parse_targets,
@@ -99,21 +102,62 @@ def test_group_proxies_without_name_falls_back_to_address():
     ]
 
 
-async def test_fetch_locations_manual_targets_win_over_checker():
-    checker = _Checker([XrayProxy("from-checker.test", 1, True, 0)])
-    locs = await fetch_locations(checker, ("Москва=ru.test:443",))
-    assert [loc.targets for loc in locs] == [[("ru.test", 443)]]
+async def test_manual_targets_source():
+    locs = await ManualTargets(["Moscow=ru.test:443", "Нидерланды=nl.test:443"]).fetch()
+    assert [(loc.targets, loc.name) for loc in locs] == [
+        ([("ru.test", 443)], "Moscow"),
+        ([("nl.test", 443)], "Нидерланды"),
+    ]
+    # у кириллического имени ключ — хеш от имени, он стабилен между запусками
+    assert locs[1].key.startswith("loc-") and locs[1].key == unique_key("Нидерланды", set())
 
 
-async def test_fetch_locations_from_checker_and_without_any():
-    checker = _Checker([XrayProxy("nl.test", 443, True, 0, "NL", "x")])
-    assert [loc.name for loc in await fetch_locations(checker, ())] == ["NL"]
-    assert await fetch_locations(None, ()) == []
-
-
-async def test_fetch_locations_propagates_source_error():
+async def test_checker_targets_source_uses_groups():
+    checker = _Checker([XrayProxy("nl.test", 443, True, 0, "Нидерланды", "x")])
+    locs = await CheckerTargets(checker).fetch()
+    assert [loc.name for loc in locs] == ["Нидерланды"]
     with pytest.raises(SourceError):
-        await fetch_locations(_Checker(exc=SourceError("down")), ())
+        await CheckerTargets(_Checker(exc=SourceError("down"))).fetch()
+
+
+def test_build_targets_priority_and_emptiness():
+    checker = _Checker([XrayProxy("nl.test", 443, True, 0, "NL", "x")])
+    # TARGETS важнее панели и подписки
+    got = build_targets(checker=checker, panel_url="http://p", panel_token="t",
+                        manual=["Москва=ru.test:443"])
+    assert isinstance(got, ManualTargets)
+    # панель — когда TARGETS пуст
+    got = build_targets(checker=checker, panel_url="http://p/", panel_token="t")
+    assert isinstance(got, PanelTargets) and got.name == "панель Remnawave"
+    # подписка — когда нет ни TARGETS, ни панели
+    got = build_targets(checker=checker)
+    assert isinstance(got, CheckerTargets)
+    # ни одного источника
+    assert build_targets(checker=None) is None
+    # панель без токена не считается настроенной
+    assert build_targets(checker=None, panel_url="http://p") is None
+
+
+async def test_panel_targets_closes_its_client():
+    class _Panel:
+        closed = False
+
+        async def fetch_hosts(self):
+            return []
+
+        async def fetch_nodes(self):
+            return []
+
+        async def fetch_squad_inbounds(self):
+            return {}
+
+        async def aclose(self):
+            _Panel.closed = True
+
+    targets = PanelTargets(_Panel())
+    assert await targets.fetch() == []
+    await targets.aclose()
+    assert _Panel.closed is True
 
 
 def test_location_targets_are_not_shared_between_instances():

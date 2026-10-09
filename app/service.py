@@ -116,6 +116,9 @@ async def build_status(
         item: dict[str, Any] = {
             "key": loc.key,
             "name": loc.name,
+            #: Пусто у локаций из TARGETS/подписки: код страны знает только панель.
+            "country_code": loc.country_code,
+            "whitelist": loc.whitelist,
             "world": world,
             "ru": ru,
             "uptime": uptime_info(history.get(loc.key, [])),

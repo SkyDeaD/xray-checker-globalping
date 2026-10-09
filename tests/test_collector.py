@@ -10,6 +10,7 @@ import pytest
 from app import store
 from app.collector import StatusState, ru_level, run_collector, run_ru, run_world
 from app.sources import ProbeRow, RateLimitedError, SourceError, XrayProxy
+from app.targets import CheckerTargets, ManualTargets
 from tests.conftest import loc
 
 NOW = datetime(2026, 10, 9, 12, 0, tzinfo=UTC)
@@ -170,9 +171,10 @@ async def test_collector_loop_survives_failures_and_collects(sessionmaker):
             return [XrayProxy("nl.test", 1, True, 40, "NL", ""), XrayProxy("pl.test", 1, True, 50, "PL", "")]
 
     state = StatusState()
+    checker = FlakyChecker()
     task = asyncio.create_task(run_collector(
         sessionmaker=sessionmaker, state=state,
-        world=FlakyChecker(), ru=_Ru(lambda t: _rows(20, 20)),
+        targets=CheckerTargets(checker), world=checker, ru=_Ru(lambda t: _rows(20, 20)),
         world_interval=0, ru_interval=0, ru_limit=20, tick=0.01,
     ))
     for _ in range(200):
@@ -190,7 +192,8 @@ async def test_collector_uses_manual_targets_without_checker(sessionmaker):
     state = StatusState()
     task = asyncio.create_task(run_collector(
         sessionmaker=sessionmaker, state=state, world=None,
-        ru=_Ru(lambda t: _rows(19, 20)), manual_targets=("Moscow=ru.test:443",),
+        targets=ManualTargets(["Moscow=ru.test:443"]),
+        ru=_Ru(lambda t: _rows(19, 20)),
         world_interval=0, ru_interval=0, ru_limit=20, tick=0.01,
     ))
     for _ in range(200):
@@ -206,7 +209,7 @@ async def test_collector_uses_manual_targets_without_checker(sessionmaker):
 async def test_collector_raises_cancelled_error(sessionmaker):
     state = StatusState()
     task = asyncio.create_task(run_collector(
-        sessionmaker=sessionmaker, state=state, world=None, ru=None,
+        sessionmaker=sessionmaker, state=state, targets=None, world=None, ru=None,
         world_interval=0, ru_interval=0, ru_limit=20, tick=5,
     ))
     await asyncio.sleep(0.05)

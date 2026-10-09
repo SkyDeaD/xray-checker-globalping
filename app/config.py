@@ -53,6 +53,13 @@ class Settings:
     checker_user: str = ""
     checker_password: str = ""
 
+    #: Панель Remnawave: локации берутся из её хостов. Нужны оба поля — URL и токен.
+    panel_url: str = ""
+    panel_token: str = ""
+    #: Squad «белых списков»: хосты с его inbound'ами показываются отдельной
+    #: локацией (``NL-wl``). Пусто — такого деления нет.
+    whitelist_squad_uuid: str = ""
+
     #: Токен Globalping (Bearer). Пусто — источник «из России» выключен.
     globalping_token: str = ""
     #: База API Globalping; меняется только для тестов/прокси.
@@ -63,8 +70,8 @@ class Settings:
     #: Сколько зондов в одном измерении (1 зонд = 1 тест квоты).
     ru_probes: int = 20
 
-    #: Список целей вручную: ``Имя=host:port`` через запятую. Пусто — локации
-    #: собираются из подписки xray-checker.
+    #: Список целей вручную: ``Имя=host:port`` через запятую. Задан — важнее
+    #: панели и подписки.
     targets: tuple[str, ...] = ()
 
     world_interval: int = 300
@@ -87,6 +94,9 @@ class Settings:
             checker_url=os.environ.get("CHECKER_URL", "http://xray-checker:2112").strip(),
             checker_user=os.environ.get("CHECKER_USER", "").strip(),
             checker_password=os.environ.get("CHECKER_PASSWORD", "").strip(),
+            panel_url=os.environ.get("PANEL_URL", "").strip().rstrip("/"),
+            panel_token=os.environ.get("PANEL_TOKEN", "").strip(),
+            whitelist_squad_uuid=os.environ.get("WHITELIST_SQUAD_UUID", "").strip(),
             globalping_token=os.environ.get("GLOBALPING_TOKEN", "").strip(),
             globalping_base=os.environ.get(
                 "GLOBALPING_BASE", "https://api.globalping.io"
@@ -108,9 +118,14 @@ class Settings:
 
     @property
     def sources_note(self) -> str:
-        """Какие источники включены — для строки в логе при старте (без секретов)."""
+        """Что включено — для строки в логе при старте (без секретов)."""
 
         world = "да" if self.checker_url else "нет"
         ru = "да" if self.globalping_token else "нет"
-        manual = f"{len(self.targets)} шт." if self.targets else "нет"
-        return f"из мира={world}, из России={ru}, свои цели={manual}"
+        return f"из мира={world}, из России={ru}"
+
+    @property
+    def panel_note(self) -> str:
+        """Панель в логе — без токена."""
+
+        return self.panel_url if self.panel_url and self.panel_token else "нет"

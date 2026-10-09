@@ -82,6 +82,21 @@ async def test_status_payload_world_and_ru(sessionmaker):
     assert payload["updated_at"] == "2026-10-09T12:00:00Z"
 
 
+async def test_status_payload_marks_whitelist_and_country(sessionmaker):
+    from app.targets import Location
+
+    state = StatusState(locations=[
+        Location(key="NL", name="Нидерланды", targets=[("nl.test", 443)],
+                 country_code="NL", whitelist=False),
+        Location(key="NL-wl", name="Нидерланды", targets=[("wl.test", 443)],
+                 country_code="NL", whitelist=True),
+    ])
+    payload = await build_status(state, sessionmaker, now=NOW)
+    by = {item["key"]: item for item in payload["locations"]}
+    assert (by["NL"]["country_code"], by["NL"]["whitelist"]) == ("NL", False)
+    assert (by["NL-wl"]["country_code"], by["NL-wl"]["whitelist"]) == ("NL", True)
+
+
 async def test_status_payload_hides_addresses_unless_enabled(sessionmaker):
     state = StatusState(locations=[loc("NL", [("secret-host.internal", 44321)])])
     await store.add_check(sessionmaker, key="NL", source="world", level="green", now=NOW)

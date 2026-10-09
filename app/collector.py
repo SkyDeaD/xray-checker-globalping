@@ -1,4 +1,4 @@
-"""Фоновый сборщик: xray-checker («из мира») и Globalping («из России»).
+"""Фоновый сборщик: локации, xray-checker («из мира») и Globalping («из России»).
 
 Цикл НИКОГДА не падает — любая ошибка источника уходит в лог, а у локации
 появляется «нет данных» (``unknown``), а не «недоступна». Отмена
@@ -21,7 +21,7 @@ from .sources import (
     WorldSource,
     effective_ru_interval,
 )
-from .targets import Location, fetch_locations
+from .targets import Location, TargetSource
 
 logger = logging.getLogger(__name__)
 
@@ -137,27 +137,29 @@ async def run_collector(
     *,
     sessionmaker,
     state: StatusState,
+    targets: TargetSource | None,
     world: WorldSource | None,
     ru: RuSource | None,
-    manual_targets: tuple[str, ...] | list[str] = (),
     world_interval: int,
     ru_interval: int,
     ru_limit: int,
     tick: float = 15.0,
 ) -> None:
-    """Главный цикл. ``world``/``ru`` = ``None`` — источник выключен."""
+    """Главный цикл. ``world``/``ru`` = ``None`` — источник проверок выключен."""
 
     next_world = next_ru = next_cleanup = 0.0
     while True:
         now = time.monotonic()
         try:
-            if (world is not None and now >= next_world) or (ru is not None and now >= next_ru):
-                try:
-                    # Локации берём из подписки чекера или из TARGETS. Сбой — работаем
-                    # с последними известными, а не обнуляем страницу.
-                    state.locations = await fetch_locations(world, manual_targets)
-                except Exception as exc:
-                    logger.warning("Статус: цели недоступны (%s: %s)", type(exc).__name__, exc)
+            due = (world is not None and now >= next_world) or (ru is not None and now >= next_ru)
+            if due:
+                # Список локаций обновляем перед проверками: сбой источника целей не
+                # обнуляет страницу — работаем с последними известными.
+                if targets is not None:
+                    try:
+                        state.locations = await targets.fetch()
+                    except Exception as exc:
+                        logger.warning("Статус: локации недоступны (%s: %s)", type(exc).__name__, exc)
                 locs: list[Location] = state.locations
 
                 if world is not None and now >= next_world:

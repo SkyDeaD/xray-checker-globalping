@@ -87,6 +87,7 @@ td.name { font-weight: 600; }
 .badge.red { color: var(--red); background: color-mix(in srgb, var(--red) 12%, transparent); }
 .badge.unknown { color: var(--unknown); background: color-mix(in srgb, var(--unknown) 14%, transparent); }
 .dim { color: var(--muted); font-size: 13px; }
+.mark { display: block; font-weight: 400; font-size: 12px; color: var(--muted); }
 .bars { display: inline-flex; gap: 2px; align-items: flex-end; height: 24px; }
 .bar { width: 6px; height: 20px; border-radius: 1px; background: var(--unknown); }
 .bar.green { background: var(--green); }
@@ -213,9 +214,10 @@ def _location(loc: dict[str, Any], providers: list[dict[str, Any]]) -> str:
     availability = (
         f'<div class="dim">{pct} % за {hours} ч</div>' if isinstance(pct, (int, float)) else ""
     )
+    mark = '<span class="mark">белые списки</span>' if loc.get("whitelist") else ""
     return (
         "<tr>"
-        f'<td class="name">{_esc(loc.get("name"))}</td>'
+        f'<td class="name">{_esc(loc.get("name"))}{mark}</td>'
         f'<td>{_cell(loc.get("world"))}</td>'
         f'<td>{_cell(loc.get("ru"))}</td>'
         f'<td>{_bars(loc.get("days") or [])}{availability}</td>'
@@ -239,9 +241,10 @@ def render_page(payload: dict[str, Any], providers: dict[str, list[dict[str, Any
         )
     else:
         body = (
-            '<div class="empty">Проверок пока нет. Они появятся через несколько минут '
-            "после запуска — нужны адреса серверов (подписка xray-checker или TARGETS) "
-            "и токен Globalping для проверок из России.</div>"
+            '<div class="empty">Проверок пока нет. Появятся через несколько минут после '
+            "запуска, если сервису есть откуда взять серверы: панель (PANEL_URL), "
+            "свои цели (TARGETS) или подписка xray-checker. Для проверок из России "
+            "нужен токен Globalping — без него будет только колонка «из мира».</div>"
         )
     updated = payload.get("updated_at")
     overall = str(payload.get("overall") or "unknown")

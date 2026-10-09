@@ -23,6 +23,7 @@ from .db import bootstrap, make_engine, make_sessionmaker
 from .page import render_page
 from .service import build_providers, build_status, disabled_payload
 from .sources import GlobalpingSource, XrayCheckerSource
+from .targets import build_targets
 
 logger = logging.getLogger(__name__)
 
@@ -117,12 +118,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
         else:
             logger.warning("Статус: GLOBALPING_TOKEN пуст — проверки «из России» выключены")
-        if world is None and not conf.targets:
+        targets = build_targets(
+            checker=world,
+            panel_url=conf.panel_url,
+            panel_token=conf.panel_token,
+            whitelist_squad_uuid=conf.whitelist_squad_uuid,
+            manual=conf.targets,
+        )
+        if targets is None:
             logger.warning(
-                "Статус: локации собирать не из чего — ни CHECKER_URL, ни TARGETS. "
-                "Проверок не будет."
+                "Статус: локации собирать не из чего — нужен один из трёх источников: "
+                "PANEL_URL+PANEL_TOKEN, TARGETS или CHECKER_URL. Проверок не будет."
             )
         sources = [s for s in (world, ru) if s is not None]
+        # targets может владеть своим клиентом (панель) — закрываем и его.
+        closables = [*sources, targets] if targets is not None else list(sources)
 
         app.state.settings = conf
         app.state.sessionmaker = sessionmaker
@@ -133,16 +143,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 run_collector(
                     sessionmaker=sessionmaker,
                     state=app.state.status_state,
+                    targets=targets,
                     world=world,
                     ru=ru,
-                    manual_targets=conf.targets,
                     world_interval=conf.world_interval,
                     ru_interval=conf.ru_interval,
                     ru_limit=conf.ru_probes,
                     tick=conf.tick,
                 )
             )
-        logger.info("Сервис запущен: БД=%s, источники — %s", conf.db_path, conf.sources_note)
+        logger.info(
+            "Сервис запущен: БД=%s, панель=%s, локации=%s, проверки — %s",
+            conf.db_path, conf.panel_note, targets.name if targets else "нет", conf.sources_note,
+        )
         try:
             yield
         finally:
@@ -151,7 +164,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if task is not None:
                 task.cancel()
                 await asyncio.gather(task, return_exceptions=True)
-            for src in sources:
+            for src in closables:
                 await src.aclose()
             await engine.dispose()
 

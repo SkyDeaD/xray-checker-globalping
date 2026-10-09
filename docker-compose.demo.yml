@@ -1,0 +1,80 @@
+# Демо-стенд: посмотреть страницу, не подключая свои серверы.
+#
+# ВАЖНО: у демо своё имя проекта (ниже), иначе `docker compose down` в этой же
+# папке снёс бы демо вместе с основным стеком — имя проекта берёт из имени папки.
+#
+#   docker compose -f docker-compose.demo.yml up -d      # http://localhost:8090
+#   docker compose -f docker-compose.demo.yml down -v    # снести вместе с данными
+#
+# Три контейнера: demo-stub (фейковые панель + xray-checker + Globalping),
+# demo-seed (кладёт историю за 30 дней и выходит), probe (сам сервис).
+# Все адреса — example.com, данные вымышленные.
+
+name: xray-checker-globalping-demo
+
+services:
+  demo-stub:
+    build: .
+    image: xray-checker-globalping:demo
+    container_name: demo-stub
+    command: python /srv/demo/stub.py
+    volumes:
+      - ./demo:/srv/demo:ro
+    ports:
+      - "127.0.0.1:2199:2199"
+    # У образа healthcheck стучится в /api/healthz сервиса (порт 8080);
+    # у заглушки свой порт, поэтому проверяем её собственную точку.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:2199/api/hosts', timeout=4)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+
+  demo-seed:
+    image: xray-checker-globalping:demo
+    container_name: demo-seed
+    command: python /srv/demo/seed.py
+    depends_on: [demo-stub]
+    volumes:
+      - ./demo:/srv/demo:ro
+      - demo-data:/data
+    environment:
+      DB_PATH: /data/status.db
+      # Строку запускаем по пути, поэтому пакет app нужно указать явно.
+      PYTHONPATH: /srv
+
+  probe:
+    image: xray-checker-globalping:demo
+    container_name: demo-probe
+    depends_on:
+      demo-seed:
+        condition: service_completed_successfully
+    volumes:
+      - demo-data:/data
+    environment:
+      # Локации — из фейковой панели, «из мира» — из фейкового xray-checker,
+      # «из России» — из фейкового Globalping. Всё на одном хосте demo-stub.
+      PANEL_URL: http://demo-stub:2199
+      PANEL_TOKEN: demo
+      WHITELIST_SQUAD_UUID: demo-wl-squad
+      # Все фейковые сервисы живут на одном хосте demo-stub и одном порту.
+      CHECKER_URL: http://demo-stub:2199
+      GLOBALPING_TOKEN: demo
+      GLOBALPING_BASE: http://demo-stub:2199
+      DB_PATH: /data/status.db
+      WORLD_INTERVAL: "60"
+      RU_INTERVAL: "300"
+      LOG_LEVEL: INFO
+    ports:
+      - "127.0.0.1:8090:8080"
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+
+volumes:
+  demo-data:
